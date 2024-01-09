@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/spf13/viper"
 )
 
 // Data represents the structure of the data to be stored.
@@ -27,18 +29,25 @@ type Feedback struct {
 	Feedback string `json:"feedback"`
 }
 
+
 var db *sql.DB
+
+
 
 func main() {
 
+
+	loadConfig()
+
 	// Open the SQLite database
 	var err error
-	db, err = sql.Open("sqlite3", "data.db")
+	db, err = sql.Open(viper.GetString("database.driver"), viper.GetString("database.connection"))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	defer db.Close()
+
 
 	// Create the waitlist table if it doesn't exist
 	_, err = db.Exec(`
@@ -84,11 +93,28 @@ func main() {
 	// Define a route for handling GET requests to /get-feedback
 	r.HandleFunc("/get-feedback", getFeedback).Methods("GET")
 
-	// Start the server on port 8080
+	// Start the server on the specified port
+	port := viper.GetString("server.port")
 	http.Handle("/", r)
-	// fmt.Println("Server listening on :8080")
-	http.ListenAndServe(":8080", nil)
+	// fmt.Printf("Server listening on :%s\n", port)
+	http.ListenAndServe(":"+port, nil)
 }
+
+
+
+func loadConfig() {
+	// Set the file name of the configuration file
+	viper.SetConfigFile("config.yaml")
+
+	// Read the configuration file
+	if err := viper.ReadInConfig(); err != nil {
+		// fmt.Println("Error reading config file:", err)
+		os.Exit(1)
+	}
+}
+
+
+
 
 func postWaitlistData(w http.ResponseWriter, r *http.Request) {
 	// Decode the JSON payload
@@ -122,6 +148,8 @@ func postWaitlistData(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+
+
 func getWaitlistData(w http.ResponseWriter, r *http.Request) {
 	// Retrieve data from the SQLite database
 	dataList, err := WaitlistGetData()
@@ -134,6 +162,9 @@ func getWaitlistData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(dataList)
 }
+
+
+
 
 func WaitlistStoreData(data Waitlist) error {
 	// Prepare the SQL statement for inserting data
@@ -154,6 +185,9 @@ func WaitlistStoreData(data Waitlist) error {
 
 	return nil
 }
+
+
+
 
 func WaitlistGetData() ([]Waitlist, error) {
 	// Retrieve all data from the data table
@@ -189,6 +223,9 @@ func WaitlistGetData() ([]Waitlist, error) {
 	return dataList, nil
 }
 
+
+
+
 func postFeedback(w http.ResponseWriter, r *http.Request) {
 	// Decode the JSON payload
 	var data Feedback
@@ -221,6 +258,9 @@ func postFeedback(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+
+
+
 func getFeedback(w http.ResponseWriter, r *http.Request) {
 	// Retrieve data from the SQLite database
 	feedbackList, err := FeedbackGetData()
@@ -233,6 +273,10 @@ func getFeedback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(feedbackList)
 }
+
+
+
+
 
 func FeedbackStoreData(data Feedback) error {
 	// Prepare the SQL statement for inserting data
@@ -253,6 +297,8 @@ func FeedbackStoreData(data Feedback) error {
 
 	return nil
 }
+
+
 
 func FeedbackGetData() ([]Feedback, error) {
 	// Retrieve feedback data from the feedback table

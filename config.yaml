@@ -1,0 +1,8 @@
+
+
+database:
+  driver: sqlite3
+  connection: DevTrade.db
+
+server:
+  port: 8080
