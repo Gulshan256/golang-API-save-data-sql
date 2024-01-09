@@ -12,7 +12,7 @@ import (
 )
 
 // Data represents the structure of the data to be stored.
-type Data struct {
+type Waitlist struct {
 	Date          string `json:"date"`
 	Time          string `json:"time"`
 	Name          string `json:"name"`
@@ -21,11 +21,16 @@ type Data struct {
 	FromLocation  string `json:"from"`
 	ComponentName string `json:"componentName"`
 }
+type Feedback struct {
+	Date     string `json:"date"`
+	Time     string `json:"time"`
+	Feedback string `json:"feedback"`
+}
 
 var db *sql.DB
 
 func main() {
-	fmt.Println("Starting server...")
+
 	// Open the SQLite database
 	var err error
 	db, err = sql.Open("sqlite3", "data.db")
@@ -35,9 +40,9 @@ func main() {
 	}
 	defer db.Close()
 
-	// Create the data table if it doesn't exist
+	// Create the waitlist table if it doesn't exist
 	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS data (
+		CREATE TABLE IF NOT EXISTS waitlist (
 			Date TEXT,
 			Time TEXT,
 			Name TEXT,
@@ -52,23 +57,42 @@ func main() {
 		return
 	}
 
+	// Create the feedback table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS feedback (
+			Date TEXT,
+			Time TEXT,
+			Feedback TEXT
+		)
+	`)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	r := mux.NewRouter()
 
 	// Define a route for handling POST requests to /post-data
-	r.HandleFunc("/post-data", postDataHandler).Methods("POST")
+	r.HandleFunc("/post-waitlist-data", postWaitlistData).Methods("POST")
 
-	// Define a route for handling GET requests to /get-data
-	r.HandleFunc("/get-data", getDataHandler).Methods("GET")
+	// Define a route for handling GET requests to /get-waitlist-data
+	r.HandleFunc("/get-waitlist-data", getWaitlistData).Methods("GET")
+
+	// Define a route for handling POST requests to /post-feedback
+	r.HandleFunc("/post-feedback", postFeedback).Methods("POST")
+
+	// Define a route for handling GET requests to /get-feedback
+	r.HandleFunc("/get-feedback", getFeedback).Methods("GET")
 
 	// Start the server on port 8080
 	http.Handle("/", r)
-	fmt.Println("Server listening on :8080")
+	// fmt.Println("Server listening on :8080")
 	http.ListenAndServe(":8080", nil)
 }
 
-func postDataHandler(w http.ResponseWriter, r *http.Request) {
+func postWaitlistData(w http.ResponseWriter, r *http.Request) {
 	// Decode the JSON payload
-	var data Data
+	var data Waitlist
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -86,7 +110,7 @@ func postDataHandler(w http.ResponseWriter, r *http.Request) {
 	data.Time = time.Now().Format("15:04:05")
 
 	// Store the data in the SQLite database
-	err = storeData(data)
+	err = WaitlistStoreData(data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -98,9 +122,9 @@ func postDataHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func getDataHandler(w http.ResponseWriter, r *http.Request) {
+func getWaitlistData(w http.ResponseWriter, r *http.Request) {
 	// Retrieve data from the SQLite database
-	dataList, err := getData()
+	dataList, err := WaitlistGetData()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -111,10 +135,10 @@ func getDataHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(dataList)
 }
 
-func storeData(data Data) error {
+func WaitlistStoreData(data Waitlist) error {
 	// Prepare the SQL statement for inserting data
 	stmt, err := db.Prepare(`
-		INSERT INTO data (Date, Time, Name, Email, Phone, FromLocation, ComponentName)
+		INSERT INTO waitlist (Date, Time, Name, Email, Phone, FromLocation, ComponentName)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
@@ -131,22 +155,22 @@ func storeData(data Data) error {
 	return nil
 }
 
-func getData() ([]Data, error) {
+func WaitlistGetData() ([]Waitlist, error) {
 	// Retrieve all data from the data table
 	rows, err := db.Query(`
 		SELECT Date, Time, Name, Email, Phone, FromLocation, ComponentName
-		FROM data
+		FROM waitlist
 	`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var dataList []Data
+	var dataList []Waitlist
 
 	// Iterate over the rows and scan the data into a slice of Data
 	for rows.Next() {
-		var data Data
+		var data Waitlist
 		err := rows.Scan(
 			&data.Date,
 			&data.Time,
@@ -163,4 +187,100 @@ func getData() ([]Data, error) {
 	}
 
 	return dataList, nil
+}
+
+func postFeedback(w http.ResponseWriter, r *http.Request) {
+	// Decode the JSON payload
+	var data Feedback
+	err := json.NewDecoder(r.Body).Decode(&data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate required fields
+	if data.Feedback == "" {
+		http.Error(w, "Feedback cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	// Set Date and Time to current date and time
+	data.Date = time.Now().Format("2006-01-02")
+	data.Time = time.Now().Format("15:04:05")
+
+	// Store the data in the SQLite database
+	err = FeedbackStoreData(data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Send a response
+	response := map[string]string{"message": "Feedback received and stored successfully"}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func getFeedback(w http.ResponseWriter, r *http.Request) {
+	// Retrieve data from the SQLite database
+	feedbackList, err := FeedbackGetData()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Send the retrieved data as a response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(feedbackList)
+}
+
+func FeedbackStoreData(data Feedback) error {
+	// Prepare the SQL statement for inserting data
+	stmt, err := db.Prepare(`
+		INSERT INTO feedback (Date, Time, Feedback)
+		VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	// Execute the prepared statement with data values
+	_, err = stmt.Exec(data.Date, data.Time, data.Feedback)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func FeedbackGetData() ([]Feedback, error) {
+	// Retrieve feedback data from the feedback table
+	rows, err := db.Query(`
+		SELECT Date, Time, Feedback
+		FROM feedback
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var feedbackList []Feedback
+
+	// Iterate over the rows and scan the data into a slice of Data
+	for rows.Next() {
+		var feedbackData Feedback
+		err := rows.Scan(
+			&feedbackData.Date,
+			&feedbackData.Time,
+			&feedbackData.Feedback,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		feedbackList = append(feedbackList, feedbackData)
+	}
+
+	return feedbackList, nil
 }
